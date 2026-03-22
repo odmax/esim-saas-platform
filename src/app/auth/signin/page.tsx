@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense, useState } from 'react'
-import { signIn } from 'next-auth/react'
+import { Suspense, useState, useEffect } from 'react'
+import { signIn, useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
@@ -9,12 +9,38 @@ import { Loader2 } from 'lucide-react'
 function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { status } = useSession()
   const callbackUrl = searchParams.get('callbackUrl') || '/'
+  const errorParam = searchParams.get('error')
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    if (status === 'authenticated') {
+      router.push(callbackUrl)
+      router.refresh()
+    }
+  }, [status, callbackUrl, router])
+
+  useEffect(() => {
+    if (errorParam) {
+      setError(getErrorMessage(errorParam))
+    }
+  }, [errorParam])
+
+  const getErrorMessage = (error: string) => {
+    switch (error) {
+      case 'CredentialsSignin':
+        return 'Invalid email or password'
+      case 'csrf':
+        return 'Session expired. Please try again.'
+      default:
+        return 'An error occurred. Please try again.'
+    }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,7 +52,6 @@ function SignInForm() {
         email,
         password,
         redirect: false,
-        callbackUrl
       })
 
       if (result?.error) {
