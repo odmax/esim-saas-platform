@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { nanoid } from 'nanoid'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 const planPrices: Record<string, number> = {
   'Global 10GB': 29.99,

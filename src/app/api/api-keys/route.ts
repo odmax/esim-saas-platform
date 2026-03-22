@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import { nanoid } from 'nanoid'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 function maskKey(key: string): string {
   const parts = key.split('_')

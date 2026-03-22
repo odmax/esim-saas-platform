@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth'
 import bcrypt from 'bcryptjs'
 
 export const dynamic = 'force-dynamic'
+export const runtime = 'nodejs'
 
 export async function PUT(request: Request) {
   try {
