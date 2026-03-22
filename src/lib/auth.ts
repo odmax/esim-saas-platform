@@ -16,7 +16,7 @@ function getPool(): Pool {
       max: 5,
       idleTimeoutMillis: 10000,
       connectionTimeoutMillis: 5000,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+      ssl: { rejectUnauthorized: false },
     })
   }
   return globalPool.pool
@@ -26,7 +26,6 @@ export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: 'credentials',
-      type: 'credentials',
       credentials: {
         email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' }
@@ -46,6 +45,7 @@ export const authOptions: NextAuthOptions = {
           const user = result.rows[0]
 
           if (!user) {
+            console.log('User not found:', credentials.email)
             return null
           }
 
@@ -55,6 +55,7 @@ export const authOptions: NextAuthOptions = {
           )
 
           if (!isPasswordValid) {
+            console.log('Invalid password for:', credentials.email)
             return null
           }
 
@@ -106,14 +107,16 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60
   },
   secret: process.env.NEXTAUTH_SECRET,
+  debug: process.env.NODE_ENV === 'development',
+  useSecureCookies: true,
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: 'lax',
+        sameSite: 'none',
+        secure: true,
         path: '/',
-        secure: process.env.NODE_ENV === 'production'
       }
     }
   }
