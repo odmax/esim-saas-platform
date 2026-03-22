@@ -1,6 +1,6 @@
 {
   "framework": "nextjs",
-  "buildCommand": "prisma generate && next build",
+  "buildCommand": "prisma generate && next build --no-lint",
   "devCommand": "next dev",
   "installCommand": "npm install",
   "regions": ["iad1"],

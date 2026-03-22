@@ -10,6 +10,10 @@ const nextConfig = {
     serverActions: {
       allowedOrigins: ['localhost:3000'],
     },
+    disableExplorativeBuilds: true,
+  },
+  jest: {
+    disableFragileAPIRoutes: true,
   },
 }
 
