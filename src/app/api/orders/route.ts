@@ -3,7 +3,15 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { nanoid } from 'nanoid'
 
-let orders = [
+const planPrices: Record<string, number> = {
+  'Global 10GB': 29.99,
+  'Europe 5GB': 14.99,
+  'Asia 20GB': 49.99,
+  'Global 50GB': 99.99,
+  'USA 10GB': 24.99,
+}
+
+const mockOrders = [
   { id: 'ORD-001', customer: 'TechCorp Inc.', email: 'orders@techcorp.com', plan: 'Global 10GB', amount: 29.99, status: 'Completed', date: '2024-01-15', esims: 5 },
   { id: 'ORD-002', customer: 'Global Travel Ltd', email: 'bulk@globaltravel.com', plan: 'Europe 5GB', amount: 149.90, status: 'Processing', date: '2024-01-14', esims: 10 },
   { id: 'ORD-003', customer: 'Mobile Solutions', email: 'procurement@mobilesol.io', plan: 'Asia 20GB', amount: 499.95, status: 'Completed', date: '2024-01-14', esims: 10 },
@@ -15,63 +23,72 @@ let orders = [
 ]
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions)
+  try {
+    const session = await getServerSession(authOptions)
 
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
-  const { searchParams } = new URL(request.url)
-  const search = searchParams.get('search') || ''
-  const status = searchParams.get('status') || ''
-
-  let filtered = orders
-  if (search) {
-    filtered = filtered.filter(o => 
-      o.customer.toLowerCase().includes(search.toLowerCase()) ||
-      o.id.toLowerCase().includes(search.toLowerCase())
-    )
-  }
-  if (status) {
-    filtered = filtered.filter(o => o.status === status)
-  }
-
-  const totalRevenue = orders.reduce((sum, o) => sum + o.amount, 0)
-  const avgOrderValue = totalRevenue / orders.length
-  const failedCount = orders.filter(o => o.status === 'Failed').length
-
-  return NextResponse.json({
-    orders: filtered,
-    stats: {
-      total: orders.length,
-      revenue: totalRevenue,
-      avgOrderValue,
-      failed: failedCount
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-  })
+
+    const { searchParams } = new URL(request.url)
+    const search = searchParams.get('search') || ''
+    const status = searchParams.get('status') || ''
+
+    let filtered = mockOrders
+    if (search) {
+      const searchLower = search.toLowerCase()
+      filtered = filtered.filter(o => 
+        o.customer.toLowerCase().includes(searchLower) ||
+        o.id.toLowerCase().includes(searchLower)
+      )
+    }
+    if (status) {
+      filtered = filtered.filter(o => o.status === status)
+    }
+
+    const totalRevenue = mockOrders.reduce((sum, o) => sum + o.amount, 0)
+    const avgOrderValue = totalRevenue / mockOrders.length
+    const failedCount = mockOrders.filter(o => o.status === 'Failed').length
+
+    return NextResponse.json({
+      orders: filtered,
+      stats: {
+        total: mockOrders.length,
+        revenue: totalRevenue,
+        avgOrderValue,
+        failed: failedCount
+      }
+    })
+  } catch (error) {
+    console.error('Orders fetch error:', error)
+    return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
+  }
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions)
-
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const body = await request.json()
+    const session = await getServerSession(authOptions)
+
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
     const { customer, email, plan, esims } = body
 
     if (!customer || !email || !plan) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const planPrices: Record<string, number> = {
-      'Global 10GB': 29.99,
-      'Europe 5GB': 14.99,
-      'Asia 20GB': 49.99,
-      'Global 50GB': 99.99,
-      'USA 10GB': 24.99,
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
     }
 
     const amount = (planPrices[plan] || 29.99) * (esims || 1)
@@ -86,10 +103,9 @@ export async function POST(request: Request) {
       esims: esims || 1
     }
 
-    orders = [newOrder, ...orders]
-
-    return NextResponse.json({ success: true, order: newOrder })
-  } catch {
-    return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    return NextResponse.json({ success: true, order: newOrder }, { status: 201 })
+  } catch (error) {
+    console.error('Order creation error:', error)
+    return NextResponse.json({ error: 'Failed to create order' }, { status: 500 })
   }
 }

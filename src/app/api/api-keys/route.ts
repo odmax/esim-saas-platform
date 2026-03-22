@@ -1,21 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import { nanoid } from 'nanoid'
-
-let prismaInstance: any = null
-
-async function getPrisma() {
-  if (!prismaInstance) {
-    const { PrismaClient } = await import('@prisma/client')
-    const { PrismaPg } = await import('@prisma/adapter-pg')
-    const { Pool } = await import('pg')
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-    const adapter = new PrismaPg(pool)
-    prismaInstance = new PrismaClient({ adapter })
-  }
-  return prismaInstance
-}
 
 function maskKey(key: string): string {
   const parts = key.split('_')
@@ -26,21 +13,20 @@ function maskKey(key: string): string {
 }
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const prisma = await getPrisma()
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const keys = await prisma.apiKey.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: 'desc' }
     })
 
     return NextResponse.json({
-      keys: keys.map((k: { id: string; name: string; key: string; prefix: string; status: string; createdAt: Date; lastUsed: Date | null }) => ({
+      keys: keys.map((k) => ({
         id: k.id,
         name: k.name,
         prefix: k.prefix,
@@ -58,25 +44,33 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const body = await request.json()
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
     const { name, environment = 'live' } = body
 
     if (!name) {
       return NextResponse.json({ error: 'Key name is required' }, { status: 400 })
     }
 
+    if (name.length > 100) {
+      return NextResponse.json({ error: 'Key name too long' }, { status: 400 })
+    }
+
     const prefix = environment === 'test' ? 'esk_test_' : 'esk_live_'
     const randomPart = nanoid(24)
     const fullKey = `${prefix}${randomPart}`
-
-    const prisma = await getPrisma()
     
     const newKey = await prisma.apiKey.create({
       data: {
@@ -98,10 +92,10 @@ export async function POST(request: Request) {
         maskedKey: maskKey(newKey.key),
         status: newKey.status.toLowerCase(),
         createdAt: newKey.createdAt,
-        lastUsed: null as Date | null,
+        lastUsed: null,
         requests: '0'
       }
-    })
+    }, { status: 201 })
   } catch (error) {
     console.error('API key creation error:', error)
     return NextResponse.json({ error: 'Failed to create API key' }, { status: 500 })
@@ -109,13 +103,13 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const keyId = searchParams.get('id')
 
@@ -123,8 +117,6 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Key ID is required' }, { status: 400 })
     }
 
-    const prisma = await getPrisma()
-    
     const existingKey = await prisma.apiKey.findFirst({
       where: {
         id: keyId,

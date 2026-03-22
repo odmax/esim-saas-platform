@@ -1,31 +1,24 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 
-let prismaInstance: any = null
-
-async function getPrisma() {
-  if (!prismaInstance) {
-    const { PrismaClient } = await import('@prisma/client')
-    const { PrismaPg } = await import('@prisma/adapter-pg')
-    const { Pool } = await import('pg')
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-    const adapter = new PrismaPg(pool)
-    prismaInstance = new PrismaClient({ adapter })
-  }
-  return prismaInstance
-}
-
 export async function PUT(request: Request) {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const body = await request.json()
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
     const { currentPassword, newPassword } = body
 
     if (!currentPassword || !newPassword) {
@@ -36,8 +29,6 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
 
-    const prisma = await getPrisma()
-    
     const user = await prisma.user.findUnique({
       where: { id: session.user.id }
     })

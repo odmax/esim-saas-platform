@@ -30,6 +30,12 @@ export default function SignUpPage() {
       return
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -43,6 +49,7 @@ export default function SignUpPage() {
 
       if (!res.ok) {
         setError(data.error || 'Registration failed')
+        setLoading(false)
         return
       }
 
@@ -52,12 +59,19 @@ export default function SignUpPage() {
         redirect: false
       })
 
+      if (result?.error) {
+        setError('Account created but sign in failed. Please try logging in.')
+        setLoading(false)
+        return
+      }
+
       if (result?.ok) {
         router.push('/')
         router.refresh()
       }
-    } catch {
-      setError('An error occurred')
+    } catch (err) {
+      console.error('Sign up error:', err)
+      setError('An unexpected error occurred. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -91,6 +105,7 @@ export default function SignUpPage() {
                 onChange={(e) => setName(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                 placeholder="John Doe"
+                autoComplete="name"
               />
             </div>
 
@@ -103,6 +118,7 @@ export default function SignUpPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                 placeholder="you@example.com"
+                autoComplete="email"
               />
             </div>
 
@@ -115,6 +131,7 @@ export default function SignUpPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                 placeholder="••••••••"
+                autoComplete="new-password"
               />
             </div>
 
@@ -127,6 +144,7 @@ export default function SignUpPage() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                 placeholder="••••••••"
+                autoComplete="new-password"
               />
             </div>
 

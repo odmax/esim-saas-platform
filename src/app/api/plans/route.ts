@@ -18,11 +18,16 @@ const regionalPlans = [
 ]
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
+  try {
+    const session = await getServerSession(authOptions)
 
-  if (!session) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    return NextResponse.json({ plans, regionalPlans })
+  } catch (error) {
+    console.error('Plans fetch error:', error)
+    return NextResponse.json({ error: 'Failed to fetch plans' }, { status: 500 })
   }
-
-  return NextResponse.json({ plans, regionalPlans })
 }

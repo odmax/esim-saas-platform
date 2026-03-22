@@ -2,12 +2,14 @@
 
 import { Suspense, useState } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
 
 function SignInForm() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const callbackUrl = searchParams.get('callbackUrl') || '/'
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -23,18 +25,23 @@ function SignInForm() {
       const result = await signIn('credentials', {
         email,
         password,
-        redirect: false
+        redirect: false,
+        callbackUrl
       })
 
       if (result?.error) {
         setError('Invalid email or password')
         setLoading(false)
-      } else {
-        router.push('/')
+        return
+      }
+
+      if (result?.ok) {
+        router.push(callbackUrl)
         router.refresh()
       }
-    } catch {
-      setError('An error occurred. Please try again.')
+    } catch (err) {
+      console.error('Sign in error:', err)
+      setError('An unexpected error occurred. Please try again.')
       setLoading(false)
     }
   }
@@ -67,6 +74,7 @@ function SignInForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
                 placeholder="admin@esimhub.com"
+                autoComplete="email"
               />
             </div>
 
@@ -78,7 +86,8 @@ function SignInForm() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all"
-                placeholder="admin123"
+                placeholder="••••••••"
+                autoComplete="current-password"
               />
             </div>
 
@@ -92,12 +101,6 @@ function SignInForm() {
             </button>
           </form>
 
-          <div className="mt-6 p-4 bg-slate-50 rounded-lg">
-            <p className="text-xs text-slate-500 mb-2 font-medium">Demo Credentials:</p>
-            <p className="text-xs text-slate-600">Email: <span className="font-mono">admin@esimhub.com</span></p>
-            <p className="text-xs text-slate-600">Password: <span className="font-mono">admin123</span></p>
-          </div>
-
           <p className="text-center text-sm text-slate-500 mt-6">
             Don&apos;t have an account?{' '}
             <Link href="/auth/signup" className="text-indigo-600 hover:text-indigo-700 font-medium">
@@ -110,13 +113,17 @@ function SignInForm() {
   )
 }
 
+function SignInLoading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-50 to-indigo-50">
+      <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+    </div>
+  )
+}
+
 export default function SignInPage() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
-      </div>
-    }>
+    <Suspense fallback={<SignInLoading />}>
       <SignInForm />
     </Suspense>
   )

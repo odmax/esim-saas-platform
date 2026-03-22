@@ -5,15 +5,33 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
-let prismaInstance: PrismaClient | null = null
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined
+  pool: Pool | undefined
+}
 
-function getPrisma() {
-  if (!prismaInstance) {
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-    const adapter = new PrismaPg(pool)
-    prismaInstance = new PrismaClient({ adapter })
+function createPrismaClient() {
+  const connectionString = process.env.DATABASE_URL
+  if (!connectionString) {
+    throw new Error('DATABASE_URL environment variable is not set')
   }
-  return prismaInstance
+  
+  if (!globalForPrisma.pool) {
+    globalForPrisma.pool = new Pool({ connectionString })
+  }
+  
+  const adapter = new PrismaPg(globalForPrisma.pool)
+  return new PrismaClient({
+    adapter,
+    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
+  })
+}
+
+function getPrisma(): PrismaClient {
+  if (!globalForPrisma.prisma) {
+    globalForPrisma.prisma = createPrismaClient()
+  }
+  return globalForPrisma.prisma
 }
 
 export const authOptions: NextAuthOptions = {
@@ -33,7 +51,14 @@ export const authOptions: NextAuthOptions = {
         try {
           const prisma = getPrisma()
           const user = await prisma.user.findUnique({
-            where: { email: credentials.email }
+            where: { email: credentials.email },
+            select: {
+              id: true,
+              email: true,
+              name: true,
+              password: true,
+              role: true
+            }
           })
 
           if (!user) {
@@ -63,21 +88,25 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id
         token.role = (user as any).role
         token.email = user.email
         token.name = user.name
       }
+      if (trigger === 'update' && session) {
+        token.name = session.name
+        token.email = session.email
+      }
       return token
     },
     async session({ session, token }) {
-      if (token) {
+      if (token?.id) {
         session.user = {
           id: token.id as string,
           email: token.email as string,
-          name: token.name as string,
+          name: token.name as string || null,
           role: token.role as string
         }
       }
@@ -92,5 +121,16 @@ export const authOptions: NextAuthOptions = {
     strategy: 'jwt',
     maxAge: 30 * 24 * 60 * 60
   },
-  secret: process.env.NEXTAUTH_SECRET
+  secret: process.env.NEXTAUTH_SECRET,
+  cookies: {
+    sessionToken: {
+      name: `next-auth.session-token`,
+      options: {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        secure: process.env.NODE_ENV === 'production'
+      }
+    }
+  }
 }

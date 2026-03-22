@@ -1,30 +1,16 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-
-let prismaInstance: any = null
-
-async function getPrisma() {
-  if (!prismaInstance) {
-    const { PrismaClient } = await import('@prisma/client')
-    const { PrismaPg } = await import('@prisma/adapter-pg')
-    const { Pool } = await import('pg')
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL })
-    const adapter = new PrismaPg(pool)
-    prismaInstance = new PrismaClient({ adapter })
-  }
-  return prismaInstance
-}
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const prisma = await getPrisma()
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
       select: {
@@ -54,22 +40,31 @@ export async function GET() {
 }
 
 export async function PUT(request: Request) {
-  const session = await getServerSession(authOptions)
-
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
-
   try {
-    const body = await request.json()
+    const session = await getServerSession(authOptions)
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    let body
+    try {
+      body = await request.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
+    }
+
     const { name, email } = body
 
     if (!name || !email) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
     }
 
-    const prisma = await getPrisma()
-    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(email)) {
+      return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
+    }
+
     const existingUser = await prisma.user.findFirst({
       where: {
         email,
