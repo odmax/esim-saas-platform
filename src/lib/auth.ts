@@ -1,7 +1,6 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { Pool } from 'pg'
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -22,30 +21,31 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
-        let pool: Pool | null = null
+        let client = null
         
         try {
-          pool = new Pool({ 
+          const { Pool } = await import('pg')
+          
+          const pool = new Pool({ 
             connectionString,
             max: 1,
             idleTimeoutMillis: 5000,
-            connectionTimeoutMillis: 5000,
+            connectionTimeoutMillis: 10000,
             ssl: { rejectUnauthorized: false },
           })
 
-          const result = await Promise.race([
-            pool.query(
-              `SELECT id, email, name, password, role FROM users WHERE email = $1`,
-              [credentials.email]
-            ),
-            new Promise((_, reject) => 
-              setTimeout(() => reject(new Error('Database timeout')), 5000
-            )
-          ]) as any
+          client = await pool.connect()
+          
+          const result = await client.query(
+            `SELECT id, email, name, password, role FROM users WHERE email = $1`,
+            [credentials.email]
+          )
 
           const user = result.rows[0]
 
           if (!user) {
+            client.release()
+            await pool.end()
             return null
           }
 
@@ -53,6 +53,9 @@ export const authOptions: NextAuthOptions = {
             credentials.password,
             user.password
           )
+
+          client.release()
+          await pool.end()
 
           if (!isPasswordValid) {
             return null
@@ -66,11 +69,10 @@ export const authOptions: NextAuthOptions = {
           }
         } catch (error) {
           console.error('Auth error:', error)
-          return null
-        } finally {
-          if (pool) {
-            await pool.end().catch(() => {})
+          if (client) {
+            try { client.release() } catch {}
           }
+          return null
         }
       }
     })
