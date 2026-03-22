@@ -2,9 +2,11 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-  pool: Pool | undefined
+declare global {
+  // eslint-disable-next-line no-var
+  var prisma: PrismaClient | undefined
+  // eslint-disable-next-line no-var
+  var pool: Pool | undefined
 }
 
 function createPool(): Pool {
@@ -14,45 +16,40 @@ function createPool(): Pool {
   }
   return new Pool({ 
     connectionString,
-    max: 10,
-    idleTimeoutMillis: 30000,
+    max: 5,
+    idleTimeoutMillis: 10000,
     connectionTimeoutMillis: 5000,
+    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   })
 }
 
 function createPrismaClient(): PrismaClient {
-  if (!globalForPrisma.pool) {
-    globalForPrisma.pool = createPool()
+  if (!global.pool) {
+    global.pool = createPool()
   }
   
-  const adapter = new PrismaPg(globalForPrisma.pool)
+  const adapter = new PrismaPg(global.pool)
   
   return new PrismaClient({
     adapter,
     log: process.env.NODE_ENV === 'development' 
-      ? ['query', 'error', 'warn'] 
+      ? ['error', 'warn'] 
       : ['error'],
   })
 }
 
-function getPrisma(): PrismaClient {
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrismaClient()
-  }
-  return globalForPrisma.prisma
-}
-
-export const prisma = getPrisma()
+export const prisma = global.prisma ?? createPrismaClient()
 
 if (process.env.NODE_ENV !== 'production') {
-  globalForPrisma.prisma = prisma
+  global.prisma = prisma
 }
 
-process.on('beforeExit', async () => {
-  if (globalForPrisma.pool) {
-    await globalForPrisma.pool.end()
-  }
-  if (globalForPrisma.prisma) {
-    await globalForPrisma.prisma.$disconnect()
-  }
-})
+// Graceful shutdown
+if (typeof process !== 'undefined') {
+  process.on('beforeExit', async () => {
+    await prisma.$disconnect()
+    if (global.pool) {
+      await global.pool.end()
+    }
+  })
+}

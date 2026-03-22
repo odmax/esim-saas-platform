@@ -1,37 +1,25 @@
 import { NextAuthOptions } from 'next-auth'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
-import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
 import { Pool } from 'pg'
 
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined
-  pool: Pool | undefined
-}
+const globalPool = globalThis as unknown as { pool: Pool | undefined }
 
-function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL
-  if (!connectionString) {
-    throw new Error('DATABASE_URL environment variable is not set')
+function getPool(): Pool {
+  if (!globalPool.pool) {
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      throw new Error('DATABASE_URL environment variable is not set')
+    }
+    globalPool.pool = new Pool({ 
+      connectionString,
+      max: 5,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 5000,
+      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    })
   }
-  
-  if (!globalForPrisma.pool) {
-    globalForPrisma.pool = new Pool({ connectionString })
-  }
-  
-  const adapter = new PrismaPg(globalForPrisma.pool)
-  return new PrismaClient({
-    adapter,
-    log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
-  })
-}
-
-function getPrisma(): PrismaClient {
-  if (!globalForPrisma.prisma) {
-    globalForPrisma.prisma = createPrismaClient()
-  }
-  return globalForPrisma.prisma
+  return globalPool.pool
 }
 
 export const authOptions: NextAuthOptions = {
@@ -49,17 +37,13 @@ export const authOptions: NextAuthOptions = {
         }
 
         try {
-          const prisma = getPrisma()
-          const user = await prisma.user.findUnique({
-            where: { email: credentials.email },
-            select: {
-              id: true,
-              email: true,
-              name: true,
-              password: true,
-              role: true
-            }
-          })
+          const pool = getPool()
+          const result = await pool.query(
+            `SELECT id, email, name, password, role FROM users WHERE email = $1`,
+            [credentials.email]
+          )
+
+          const user = result.rows[0]
 
           if (!user) {
             return null
