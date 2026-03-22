@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense, useState, useEffect } from 'react'
-import { signIn, useSession } from 'next-auth/react'
+import { Suspense, useState } from 'react'
+import { signIn } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Loader2 } from 'lucide-react'
@@ -9,46 +9,16 @@ import { Loader2 } from 'lucide-react'
 function SignInForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { status } = useSession()
-  const callbackUrl = searchParams.get('callbackUrl') || '/'
-  const errorParam = searchParams.get('error')
   
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  useEffect(() => {
-    if (status === 'authenticated') {
-      router.push(callbackUrl)
-      router.refresh()
-    }
-  }, [status, callbackUrl, router])
-
-  useEffect(() => {
-    if (errorParam) {
-      switch (errorParam) {
-        case 'CredentialsSignin':
-          setError('Invalid email or password')
-          break
-        case 'csrf':
-          setError('Session expired. Please try again.')
-          break
-        default:
-          setError('Login failed. Please try again.')
-      }
-    }
-  }, [errorParam])
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
     setLoading(true)
-
-    const timeout = setTimeout(() => {
-      setError('Request timed out. Please check your database connection.')
-      setLoading(false)
-    }, 15000)
 
     try {
       const result = await signIn('credentials', {
@@ -57,8 +27,6 @@ function SignInForm() {
         redirect: false,
       })
 
-      clearTimeout(timeout)
-
       if (result?.error) {
         setError('Invalid email or password')
         setLoading(false)
@@ -66,15 +34,14 @@ function SignInForm() {
       }
 
       if (result?.ok) {
-        router.push(callbackUrl)
-        router.refresh()
+        router.replace('/dashboard')
+        return
       }
     } catch (err) {
-      clearTimeout(timeout)
       console.error('Sign in error:', err)
       setError('Connection error. Please try again.')
     } finally {
-      clearTimeout(timeout)
+      setLoading(false)
     }
   }
 
