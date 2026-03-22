@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
+
+export const dynamic = 'force-dynamic'
 
 export async function PUT(request: Request) {
   try {
@@ -29,17 +30,40 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
     }
 
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
+
     const user = await prisma.user.findUnique({
       where: { id: session.user.id }
     })
 
     if (!user) {
+      await prisma.$disconnect()
+      await pool.end()
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
     const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password)
 
     if (!isCurrentPasswordValid) {
+      await prisma.$disconnect()
+      await pool.end()
       return NextResponse.json({ error: 'Current password is incorrect' }, { status: 400 })
     }
 
@@ -49,6 +73,9 @@ export async function PUT(request: Request) {
       where: { id: session.user.id },
       data: { password: hashedPassword }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     return NextResponse.json({ success: true, message: 'Password updated successfully' })
   } catch (error) {

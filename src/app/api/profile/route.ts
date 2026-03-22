@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
+
+export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
@@ -10,6 +11,25 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
+
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
 
     const user = await prisma.user.findUnique({
       where: { id: session.user.id },
@@ -21,6 +41,9 @@ export async function GET() {
         createdAt: true
       }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
@@ -65,6 +88,25 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Invalid email format' }, { status: 400 })
     }
 
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
+
     const existingUser = await prisma.user.findFirst({
       where: {
         email,
@@ -73,6 +115,8 @@ export async function PUT(request: Request) {
     })
 
     if (existingUser) {
+      await prisma.$disconnect()
+      await pool.end()
       return NextResponse.json({ error: 'Email already in use' }, { status: 400 })
     }
 
@@ -86,6 +130,9 @@ export async function PUT(request: Request) {
         role: true
       }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     return NextResponse.json({ success: true, user })
   } catch (error) {

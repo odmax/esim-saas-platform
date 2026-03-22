@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { nanoid } from 'nanoid'
 
+export const dynamic = 'force-dynamic'
+
 const planPrices: Record<string, number> = {
   'Global 10GB': 29.99,
   'Europe 5GB': 14.99,

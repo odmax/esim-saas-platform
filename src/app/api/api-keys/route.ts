@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { prisma } from '@/lib/prisma'
 import { nanoid } from 'nanoid'
+
+export const dynamic = 'force-dynamic'
 
 function maskKey(key: string): string {
   const parts = key.split('_')
@@ -20,10 +21,32 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
+
     const keys = await prisma.apiKey.findMany({
       where: { userId: session.user.id },
       orderBy: { createdAt: 'desc' }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     return NextResponse.json({
       keys: keys.map((k) => ({
@@ -71,7 +94,26 @@ export async function POST(request: Request) {
     const prefix = environment === 'test' ? 'esk_test_' : 'esk_live_'
     const randomPart = nanoid(24)
     const fullKey = `${prefix}${randomPart}`
-    
+
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
+
     const newKey = await prisma.apiKey.create({
       data: {
         name,
@@ -81,6 +123,9 @@ export async function POST(request: Request) {
         status: 'ACTIVE'
       }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     return NextResponse.json({
       success: true,
@@ -117,6 +162,25 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: 'Key ID is required' }, { status: 400 })
     }
 
+    const connectionString = process.env.DATABASE_URL
+    if (!connectionString) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 500 })
+    }
+
+    const { Pool } = await import('pg')
+    const { PrismaPg } = await import('@prisma/adapter-pg')
+    const { PrismaClient } = await import('@prisma/client')
+
+    const pool = new Pool({ 
+      connectionString,
+      max: 1,
+      idleTimeoutMillis: 5000,
+      connectionTimeoutMillis: 10000,
+      ssl: { rejectUnauthorized: false },
+    })
+    const adapter = new PrismaPg(pool)
+    const prisma = new PrismaClient({ adapter })
+
     const existingKey = await prisma.apiKey.findFirst({
       where: {
         id: keyId,
@@ -125,12 +189,17 @@ export async function DELETE(request: Request) {
     })
 
     if (!existingKey) {
+      await prisma.$disconnect()
+      await pool.end()
       return NextResponse.json({ error: 'API key not found' }, { status: 404 })
     }
 
     await prisma.apiKey.delete({
       where: { id: keyId }
     })
+
+    await prisma.$disconnect()
+    await pool.end()
 
     return NextResponse.json({ success: true })
   } catch (error) {

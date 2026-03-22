@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 
+export const dynamic = 'force-dynamic'
+
 const plans = [
   { id: 'plan_starter', name: 'Starter', description: 'Individual travelers', price: 9.99, data: '1GB', duration: '7 days', regions: 50, features: ['1GB data', '7-day validity', '50+ countries', 'Email support'], popular: false },
   { id: 'plan_global', name: 'Global', description: 'Frequent travelers', price: 29.99, data: '10GB', duration: '30 days', regions: 140, features: ['10GB data', '30-day validity', '140+ countries', 'Priority support', 'Hotspot sharing'], popular: true },
