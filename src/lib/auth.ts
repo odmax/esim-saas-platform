@@ -3,25 +3,6 @@ import CredentialsProvider from 'next-auth/providers/credentials'
 import bcrypt from 'bcryptjs'
 import { Pool } from 'pg'
 
-const globalPool = globalThis as unknown as { pool: Pool | undefined }
-
-function getPool(): Pool {
-  if (!globalPool.pool) {
-    const connectionString = process.env.DATABASE_URL
-    if (!connectionString) {
-      throw new Error('DATABASE_URL environment variable is not set')
-    }
-    globalPool.pool = new Pool({ 
-      connectionString,
-      max: 5,
-      idleTimeoutMillis: 10000,
-      connectionTimeoutMillis: 5000,
-      ssl: { rejectUnauthorized: false },
-    })
-  }
-  return globalPool.pool
-}
-
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -35,17 +16,36 @@ export const authOptions: NextAuthOptions = {
           return null
         }
 
+        const connectionString = process.env.DATABASE_URL
+        if (!connectionString) {
+          console.error('DATABASE_URL not set')
+          return null
+        }
+
+        let pool: Pool | null = null
+        
         try {
-          const pool = getPool()
-          const result = await pool.query(
-            `SELECT id, email, name, password, role FROM users WHERE email = $1`,
-            [credentials.email]
-          )
+          pool = new Pool({ 
+            connectionString,
+            max: 1,
+            idleTimeoutMillis: 5000,
+            connectionTimeoutMillis: 5000,
+            ssl: { rejectUnauthorized: false },
+          })
+
+          const result = await Promise.race([
+            pool.query(
+              `SELECT id, email, name, password, role FROM users WHERE email = $1`,
+              [credentials.email]
+            ),
+            new Promise((_, reject) => 
+              setTimeout(() => reject(new Error('Database timeout')), 5000
+            )
+          ]) as any
 
           const user = result.rows[0]
 
           if (!user) {
-            console.log('User not found:', credentials.email)
             return null
           }
 
@@ -55,7 +55,6 @@ export const authOptions: NextAuthOptions = {
           )
 
           if (!isPasswordValid) {
-            console.log('Invalid password for:', credentials.email)
             return null
           }
 
@@ -68,21 +67,21 @@ export const authOptions: NextAuthOptions = {
         } catch (error) {
           console.error('Auth error:', error)
           return null
+        } finally {
+          if (pool) {
+            await pool.end().catch(() => {})
+          }
         }
       }
     })
   ],
   callbacks: {
-    async jwt({ token, user, trigger, session }) {
+    async jwt({ token, user }) {
       if (user) {
         token.id = user.id
         token.role = (user as any).role
         token.email = user.email
         token.name = user.name
-      }
-      if (trigger === 'update' && session) {
-        token.name = session.name
-        token.email = session.email
       }
       return token
     },
@@ -107,8 +106,6 @@ export const authOptions: NextAuthOptions = {
     maxAge: 30 * 24 * 60 * 60
   },
   secret: process.env.NEXTAUTH_SECRET,
-  debug: process.env.NODE_ENV === 'development',
-  useSecureCookies: true,
   cookies: {
     sessionToken: {
       name: `next-auth.session-token`,
